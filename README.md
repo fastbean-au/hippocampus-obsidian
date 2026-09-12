@@ -1,74 +1,126 @@
 # Hippocampus Memory — Obsidian plugin
 
-Use a [Hippocampus](../../README.md) instance as a **bounded, self-consolidating memory layer** for
-your vault. Store notes (or selections) as memories, search and recall them from inside a note, and
-let Hippocampus's sleep/consolidation cycle forget low-value noise while the high-value facts
-survive — so an AI assistant working over your vault reads a distilled memory instead of thousands
-of raw daily entries.
+Use a [Hippocampus](https://github.com/fastbean-au/hippocampus) instance as a **bounded,
+self-consolidating memory layer** for your vault. Store notes (or selections) as memories, search and
+recall them from inside a note, and let Hippocampus's sleep/consolidation cycle forget low-value
+noise while the high-value facts survive — so an AI assistant working over your vault reads a
+distilled memory instead of thousands of raw daily entries.
 
-The plugin talks to Hippocampus over its **HTTP/JSON `/v1` gateway** using Obsidian's `requestUrl`
-(which is not subject to renderer CORS). It needs no gRPC and does not use `hippocampus-mcp` — that
-is a separate route for MCP-capable AI plugins (see [`docs/mcp.md`](../../docs/mcp.md) and
-[`docs/obsidian.md`](../../docs/obsidian.md)).
+A personal knowledge base accumulates a long tail of daily notes; most are noise ("fixed typo in
+README") and a few are durable facts. Feeding all of it to an assistant bloats the context window
+with the noise. Hippocampus keeps what matters — reinforcing notes that get recalled and letting the
+rest decay under a finite budget.
+
+## Why the shape fits
+
+- **The link graph is the same idea on both sides.** Obsidian's entire model is `[[wikilinks]]`, and
+  Hippocampus raises the effective significance of **both** ends of a link (`log1p`-damped, so a hub
+  note cannot become unforgettable by being linked a thousand times). A well-connected note is kept
+  for the reason it deserves to be, without anybody assigning it a significance.
+- **Reinforcement through recall.** When you — or an assistant — repeatedly reference an old project
+  note, recalling it resets its decay clock and raises its effective significance, so it survives.
+- **Sleep and consolidation.** Instead of an ever-growing index full of trivial daily logs,
+  Hippocampus consolidates low-value memories away and can condense a pile of related-but-quiet
+  memories into a single summary. See
+  [consolidation](https://github.com/fastbean-au/hippocampus/blob/main/docs/consolidation.md).
 
 ## Requirements
 
-- A running Hippocampus instance with the HTTP gateway enabled — set `gateway.port` to a non-zero
-  value in its config (the shipped `deploy/compose/config.sqlite.json` uses `8080`; the root `config.json`
-  ships with the gateway **disabled** at `0`).
-- Node.js + npm to build the plugin from source (below).
+- **Hippocampus v0.47.0 or newer**, with the HTTP gateway enabled — set `gateway.port` to a non-zero
+  value in its config (the shipped `deploy/compose/config.sqlite.json` uses `8080`; the root
+  `config.json` ships with the gateway **disabled** at `0`). See
+  [Contract conformance](#contract-conformance) for what that floor means and how it moves.
+- **Obsidian 1.4.0 or newer** (`minAppVersion` in `manifest.json`).
+- Node.js and npm, only if you are building from source.
 
-## Build
-
-```bash
-cd integrations/obsidian
-npm install
-npm run build     # tsc typecheck + esbuild bundle -> main.js
-npm test          # unit tests for the wire parsing and note→memory mapping
-```
-
-`npm run dev` runs esbuild in watch mode for iterative development.
-
-## Releasing
-
-The plugin versions **independently** of the Hippocampus service and has its own tag namespace, so a
-plugin release never triggers the service release and vice versa. To cut one:
-
-1. Bump `version` in `manifest.json` and add the matching `"<version>": "<minAppVersion>"` entry to
-   `versions.json` (the two must agree — `minAppVersion` in `manifest.json` must equal the
-   `versions.json` value for that version).
-2. Tag with the `obsidian-v` prefix and push:
-
-   ```bash
-   git tag obsidian-v0.2.0 && git push origin obsidian-v0.2.0
-   ```
-
-The [`release-obsidian.yaml`](../../.github/workflows/release-obsidian.yaml) workflow **validates**
-that the tag version matches `manifest.json`/`versions.json` before building — a mismatch fails the
-run rather than shipping a broken release — then builds and publishes a GitHub release tagged with
-the **bare** version (`0.2.0`), which is what Obsidian's updater and BRAT key on.
+The plugin talks to Hippocampus over its **HTTP/JSON `/v1` gateway** using Obsidian's `requestUrl`,
+which is not subject to renderer CORS. It needs no gRPC and does not use `hippocampus-mcp` — that is
+a separate route for MCP-capable AI assistants, and the two compose over one store: this plugin can
+populate memories from your notes while an MCP-based assistant recalls and reinforces them. See the
+[MCP server guide](https://github.com/fastbean-au/hippocampus/blob/main/docs/mcp.md).
 
 ## Install into a vault
 
 ### From a release (recommended)
 
-Each plugin release publishes `main.js`, `manifest.json`, and `styles.css` as assets on a GitHub
-release tagged with the bare plugin version (e.g. `0.1.1`). Either:
+Each release publishes `main.js`, `manifest.json` and `styles.css` as assets on a GitHub release
+tagged with the bare plugin version (e.g. `0.3.0`). Either:
 
-- **[BRAT](https://github.com/TfTHacker/obsidian42-brat)** — add `fastbean-au/hippocampus` as a beta
-  plugin; BRAT tracks the releases and updates automatically. (Point BRAT at this repo; it reads the
-  bare-version releases, not the service's `vX.Y.Z` releases.)
+- **[BRAT](https://github.com/TfTHacker/obsidian42-brat)** — add `fastbean-au/hippocampus-obsidian`
+  as a beta plugin; BRAT tracks the releases and updates automatically.
 - **Manually** — download the three assets from the
-  [latest plugin release](https://github.com/fastbean-au/hippocampus/releases) into
+  [latest release](https://github.com/fastbean-au/hippocampus-obsidian/releases/latest) into
   `<your-vault>/.obsidian/plugins/hippocampus/`.
 
 Then enable **Hippocampus Memory** under _Settings → Community plugins_.
 
+> **Moving from the monorepo.** Releases up to `0.2.0` were published from
+> `fastbean-au/hippocampus`. BRAT has no way to follow that move, so if you added the plugin from
+> the old repository, remove it and re-add `fastbean-au/hippocampus-obsidian`.
+
 ### From source
 
-Copy `manifest.json`, `styles.css`, and the built `main.js` (see [Build](#build)) into
-`<your-vault>/.obsidian/plugins/hippocampus/`, then enable the plugin. (For development you can
-symlink the plugin folder there and rely on `npm run dev`.)
+```bash
+npm install
+npm run build     # tsc typecheck + esbuild bundle -> main.js
+npm test          # wire parsing, note→memory mapping, and contract conformance
+```
+
+`npm run dev` runs esbuild in watch mode. Copy `manifest.json`, `styles.css` and the built `main.js`
+into `<your-vault>/.obsidian/plugins/hippocampus/`, then enable the plugin. For development you can
+symlink the plugin folder there and rely on `npm run dev`.
+
+## What it does
+
+- **Store note / selection as memory** — significance comes from a `significance:` frontmatter key
+  (falling back to a configurable default); the `group` label comes from the note's top-level folder,
+  a frontmatter key, or a fixed value; and `metadata` labels come from a named list of frontmatter
+  keys plus any fixed `key=value` lines. The frontmatter keys are named explicitly rather than copied
+  wholesale, so plugin bookkeeping, dates and tag arrays stay out of the labels unless you ask for
+  them; awkward keys ("Project Name") are normalised to the service's charset.
+- **Search memories and insert results** — content search (built into the service on every storage
+  driver; `opensearch.enabled` adds semantic and hybrid modes), optionally reinforcing the matches.
+- **Auto-sync a folder** — notes under a configured folder are pushed in as they are edited,
+  idempotently (one memory per note path, updated in place, re-created if consolidation has since
+  forgotten it). This is what lets the sleep cycle prune the noise: notes you keep touching are
+  reinforced and survive; notes you never revisit fade.
+- **Mirror the vault's `[[wikilinks]]`** — a synced note's links become links between the memories,
+  in both the manual and automatic paths. On by default.
+
+## Contract conformance
+
+The plugin hand-writes every wire shape it touches: `src/routes.ts` names the gateway routes it
+calls and `src/types.ts` mirrors the gateway's protojson projection. It imports nothing from the
+service's contract and generates nothing from it — which is what keeps it a plain TypeScript project
+with no toolchain beyond npm, and what makes a renamed path or a dropped field a runtime 404 rather
+than a build failure.
+
+`contract/hippocampus.swagger.json` is the service's generated OpenAPI document, vendored at the
+version in `contract/SERVICE_VERSION`, and `test/conformance.test.ts` holds both hand-written
+surfaces against it: every route, every field read off a response, every field sent in a request, and
+every query parameter. That pinned version is the **minimum service version** this plugin declares.
+
+It moves on its own: when the service cuts a release, `contract-bump.yaml` re-vendors the document
+from that tag and opens a pull request carrying the conformance result. A **red** one means the
+gateway has moved under the plugin and the plugin needs changing; a green one means this build is
+compatible with that release, and merging raises the floor.
+
+## Releasing
+
+The tag **is** the version — bare semver, no `v` prefix, which is what Obsidian's updater and BRAT
+key on.
+
+1. Bump `version` in `manifest.json`, `package.json`, and add the matching
+   `"<version>": "<minAppVersion>"` entry to `versions.json`.
+2. Tag and push:
+
+   ```bash
+   git tag 0.3.0 && git push origin 0.3.0
+   ```
+
+`release.yaml` validates that the tag agrees with all three files **before** building — a mismatch
+fails the run rather than shipping a release the updater cannot match — then builds, runs the full
+test suite including conformance, and publishes the release with its three assets.
 
 ## Configure
 

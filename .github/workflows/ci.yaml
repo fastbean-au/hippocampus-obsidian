@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege: nothing here pushes a commit, publishes an asset, or comments on a PR. The
+# default GITHUB_TOKEN is otherwise write-capable on a push to the default branch, so a compromised
+# third-party action or dependency would inherit that.
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail the build on any moderate-or-higher advisory in the dependency tree. These are all
+      # build-time (dev) dependencies, but a compromised build tool can inject into the shipped
+      # main.js, so a known-vulnerable toolchain must not build a release. npm ci does not audit,
+      # so this is a distinct step; it queries the registry advisory database on every run and thus
+      # catches advisories disclosed after the lockfile was written.
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+
+      # `npm test` includes the contract-conformance suite (test/conformance.test.ts), which is the
+      # one guard this repository gained on being split out of the monorepo. The plugin speaks to
+      # the gateway over hand-written wire types; while it lived beside contract/hippocampus.proto a
+      # field rename was at least visible in the same tree, and out here it would not be. The
+      # conformance suite holds src/client.ts's routes and src/types.ts's field reads against the
+      # vendored OpenAPI document. See CONTRACT.md.
+      - name: Build and test the plugin
+        run: |
+          npm run build
+          npm test

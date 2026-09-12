@@ -1,0 +1,119 @@
+name: Release
+
+# Obsidian's community-registry updater (and BRAT) key on a GitHub release whose tag name is EXACTLY
+# the plugin's manifest.json version - bare semver, no `v` prefix - carrying main.js, manifest.json
+# and styles.css as individual assets.
+#
+# In the monorepo this needed a second tag namespace (`obsidian-v*`) that the workflow stripped and
+# re-minted, because a bare `0.3.0` could not sit safely beside the service's `vX.Y.Z` tags. Here the
+# tag IS the version and there is nothing to disambiguate, so the release is cut from the pushed tag
+# directly.
+#
+# Cut a release by bumping manifest.json + versions.json + package.json, then:
+#
+#   git tag 0.3.0 && git push origin 0.3.0
+on:
+  push:
+    tags:
+      - "[0-9]*"
+
+# Never let two runs for the same tag race on the release/asset upload.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Fail fast, before any build, if the tag and the committed plugin metadata disagree - a
+      # mismatch is exactly the silent breakage (the updater cannot match the release) that this
+      # validation exists to prevent. Guards, in order:
+      #   1. <tag> equals manifest.json .version exactly;
+      #   2. versions.json has an entry for <tag> (the updater reads it for compatibility);
+      #   3. manifest.json .minAppVersion equals versions.json[<tag>] (internal consistency);
+      #   4. package.json .version agrees, so the npm metadata cannot drift from the manifest.
+      - name: Validate plugin version metadata
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+
+          manifest_version="$(jq -r '.version' manifest.json)"
+
+          if [ "$version" != "$manifest_version" ]; then
+            echo "::error::tag '$version' does not match manifest.json .version '$manifest_version' - bump manifest.json (and versions.json, package.json) to match the tag"
+            exit 1
+          fi
+
+          if ! jq -e --arg v "$version" 'has($v)' versions.json >/dev/null; then
+            echo "::error::versions.json has no entry for '$version' - add \"$version\": \"<minAppVersion>\""
+            exit 1
+          fi
+
+          manifest_min="$(jq -r '.minAppVersion' manifest.json)"
+          versions_min="$(jq -r --arg v "$version" '.[$v]' versions.json)"
+
+          if [ "$manifest_min" != "$versions_min" ]; then
+            echo "::error::manifest.json .minAppVersion '$manifest_min' does not match versions.json['$version'] '$versions_min'"
+            exit 1
+          fi
+
+          package_version="$(jq -r '.version' package.json)"
+
+          if [ "$version" != "$package_version" ]; then
+            echo "::error::package.json .version '$package_version' does not match the tag '$version'"
+            exit 1
+          fi
+
+          echo "Validated plugin version $version"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+
+      # `npm ci` builds from the committed lockfile (reproducible, unlike `npm install`); the build
+      # script type-checks (tsc --noEmit) and bundles src/main.ts to main.js via esbuild. `npm test`
+      # includes the contract-conformance suite, so a release cannot ship a plugin whose wire
+      # handling has drifted from the service version it declares. The assertion guarantees a
+      # release never ships an empty/absent bundle if esbuild silently no-ops.
+      - name: Install, build, test, and verify assets
+        run: |
+          set -euo pipefail
+
+          npm ci
+          npm run build
+          npm test
+
+          for asset in main.js manifest.json styles.css; do
+            if [ ! -s "$asset" ]; then
+              echo "::error::expected release asset '$asset' is missing or empty after build"
+              exit 1
+            fi
+          done
+
+      # Idempotent: if a release for this tag already exists (a re-run), reuse it and just re-upload
+      # the assets with --clobber rather than failing.
+      - name: Publish plugin release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists - updating its assets"
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes
+          fi
+
+          gh release upload "$VERSION" main.js manifest.json styles.css --clobber

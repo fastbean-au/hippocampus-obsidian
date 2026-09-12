@@ -1,0 +1,33 @@
+# Dependabot configuration.
+#
+# Version updates require this file; security updates run from the repository's settings and do not.
+# In the monorepo this plugin's npm entry was one block among four ecosystems across eight
+# directories, and the whole arrangement existed to stop seven coupled Go modules being updated a
+# subset at a time. None of that applies here: this repository is one npm project with no coupling to
+# anything, which is most of why it was split out.
+#
+# Everything below is a devDependency - esbuild, typescript, tsx, the obsidian typings - but they are
+# not therefore low-risk: they are the toolchain that produces the shipped main.js, and a compromised
+# bundler can inject into it. The CI job audits at moderate-or-higher on every run for the same
+# reason.
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      plugin-dev:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"

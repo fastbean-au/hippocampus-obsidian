@@ -1,5 +1,7 @@
 import { requestUrl } from "obsidian";
 
+import { ROUTES, route } from "./routes";
+
 import {
   candidatesFrom,
   eventsFrom,
@@ -118,11 +120,11 @@ export class HippocampusClient {
 
   // health pings the unauthenticated liveness endpoint; it throws on any non-2xx response.
   async health(): Promise<Record<string, unknown>> {
-    return this.request("GET", "/healthz");
+    return this.request(ROUTES.health.method, ROUTES.health.path);
   }
 
   async storeMemory(input: StoreMemoryInput): Promise<StoreResult> {
-    const json = await this.request("POST", "/v1/memories", input);
+    const json = await this.request(ROUTES.storeMemory.method, ROUTES.storeMemory.path, input);
 
     return { id: String(json.id ?? ""), rejected: json.rejected === true };
   }
@@ -138,7 +140,7 @@ export class HippocampusClient {
     significance?: number,
     metadata?: Record<string, string>,
   ): Promise<void> {
-    await this.request("PATCH", "/v1/memories/" + encodeURIComponent(id), {
+    await this.request(ROUTES.updateMemory.method, route(ROUTES.updateMemory.path, id), {
       id,
       body,
       significance,
@@ -152,7 +154,7 @@ export class HippocampusClient {
       return;
     }
 
-    await this.request("POST", "/v1/memories/delete", { ids });
+    await this.request(ROUTES.deleteMemories.method, ROUTES.deleteMemories.path, { ids });
   }
 
   // linkMemories adds or re-weights links from one memory to others. It is an upsert per pair, so
@@ -166,7 +168,7 @@ export class HippocampusClient {
       return;
     }
 
-    await this.request("POST", "/v1/memories/" + encodeURIComponent(id) + "/links", {
+    await this.request(ROUTES.linkMemories.method, route(ROUTES.linkMemories.path, id), {
       id,
       links,
     });
@@ -181,8 +183,8 @@ export class HippocampusClient {
     }
 
     await this.request(
-      "POST",
-      "/v1/memories/" + encodeURIComponent(id) + "/links/delete",
+      ROUTES.unlinkMemories.method,
+      route(ROUTES.unlinkMemories.path, id),
       { id, ids },
     );
   }
@@ -192,21 +194,21 @@ export class HippocampusClient {
   // so must survive a removal.
   async getMemoryLinks(id: string): Promise<LinkEdge[]> {
     const json = await this.request(
-      "GET",
-      "/v1/memories/" + encodeURIComponent(id) + "/links",
+      ROUTES.getMemoryLinks.method,
+      route(ROUTES.getMemoryLinks.path, id),
     );
 
     return linksFrom(json);
   }
 
   async searchMemories(input: SearchMemoriesInput): Promise<MemoryView[]> {
-    const json = await this.request("POST", "/v1/memories/search", input);
+    const json = await this.request(ROUTES.searchMemories.method, ROUTES.searchMemories.path, input);
 
     return memoriesFrom(json);
   }
 
   async recallMemories(ids: string[]): Promise<MemoryView[]> {
-    const json = await this.request("POST", "/v1/memories/recall", { ids });
+    const json = await this.request(ROUTES.recallMemories.method, ROUTES.recallMemories.path, { ids });
 
     return memoriesFrom(json);
   }
@@ -215,8 +217,8 @@ export class HippocampusClient {
     input: ListInput,
   ): Promise<{ memories: MemoryView[]; totalCount: number }> {
     const json = await this.request(
-      "GET",
-      "/v1/memories" + HippocampusClient.queryString(input),
+      ROUTES.listMemories.method,
+      ROUTES.listMemories.path + HippocampusClient.queryString(input),
     );
 
     return {
@@ -226,7 +228,7 @@ export class HippocampusClient {
   }
 
   async storeEvent(input: StoreEventInput): Promise<StoreResult> {
-    const json = await this.request("POST", "/v1/events", input);
+    const json = await this.request(ROUTES.storeEvent.method, ROUTES.storeEvent.path, input);
 
     return { id: String(json.id ?? ""), rejected: json.rejected === true };
   }
@@ -235,15 +237,18 @@ export class HippocampusClient {
     input: ListInput,
   ): Promise<{ events: EventView[]; totalCount: number }> {
     const json = await this.request(
-      "GET",
-      "/v1/events" + HippocampusClient.queryString(input),
+      ROUTES.listEvents.method,
+      ROUTES.listEvents.path + HippocampusClient.queryString(input),
     );
 
     return { events: eventsFrom(json), totalCount: toNumber(json.totalCount) };
   }
 
   async getSummarisationCandidates(): Promise<SummarisationCandidate[]> {
-    const json = await this.request("GET", "/v1/summarisation/candidates");
+    const json = await this.request(
+      ROUTES.getSummarisationCandidates.method,
+      ROUTES.getSummarisationCandidates.path,
+    );
 
     return candidatesFrom(json);
   }
