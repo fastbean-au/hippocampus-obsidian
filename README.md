@@ -1,5 +1,9 @@
 # Hippocampus Memory — Obsidian plugin
 
+[![CI](https://github.com/fastbean-au/hippocampus-obsidian/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/fastbean-au/hippocampus-obsidian/actions/workflows/ci.yaml)
+![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen)
+[![Known Vulnerabilities](https://snyk.io/test/github/fastbean-au/hippocampus-obsidian/badge.svg)](https://snyk.io/test/github/fastbean-au/hippocampus-obsidian)
+
 Use a [Hippocampus](https://github.com/fastbean-au/hippocampus) instance as a **bounded,
 self-consolidating memory layer** for your vault. Store notes (or selections) as memories, search and
 recall them from inside a note, and let Hippocampus's sleep/consolidation cycle forget low-value
