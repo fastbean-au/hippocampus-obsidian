@@ -30,7 +30,7 @@ rest decay under a finite budget.
 
 ## Requirements
 
-- **Hippocampus v0.48.0 or newer**, with the HTTP gateway enabled — set `gateway.port` to a non-zero
+- **Hippocampus v0.49.0 or newer**, with the HTTP gateway enabled — set `gateway.port` to a non-zero
   value in its config (the shipped `deploy/compose/config.sqlite.json` uses `8080`; the root
   `config.json` ships with the gateway **disabled** at `0`). See
   [Contract conformance](#contract-conformance) for what that floor means and how it moves.
