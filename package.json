@@ -16,10 +16,10 @@
 	"author": "fastbean-au",
 	"license": "MIT",
 	"devDependencies": {
-		"@types/node": "^26.6.4",
+		"@types/node": "^26.6.5",
 		"builtin-modules": "^5.4.0",
 		"esbuild": "^0.28.2",
-		"obsidian": "^1.4.11",
+		"obsidian": "^1.14.4",
 		"tsx": "^4.23.15",
 		"typescript": "^7.0.2"
 	},
