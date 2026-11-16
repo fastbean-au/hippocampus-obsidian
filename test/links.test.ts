@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { MAX_LINKS, linkDelta, linkPath, resolveLinkIds } from "../src/links";
-import { linksFrom } from "../src/parse";
+import { create } from "@bufbuild/protobuf";
+import { GetLinksResponseSchema, LinkDirection } from "hippocampus-client";
+
+import { linkEdgesFrom } from "../src/parse";
 
 test("linkPath strips the alias and the subpath", () => {
   assert.equal(linkPath("Note"), "Note");
@@ -109,26 +112,28 @@ test("linkDelta ignores inbound edges and is a no-op when nothing moved", () => 
   assert.deepEqual(remove, []);
 });
 
-test("linksFrom normalises the gateway's direction enum", () => {
-  const edges = linksFrom({
-    links: [
-      { id: "m-a", significance: "5", direction: "LINK_DIRECTION_OUTBOUND" },
-      { id: "m-b", significance: 3, direction: "LINK_DIRECTION_INBOUND" },
-      { id: "m-c", direction: 2 },
-      { id: "m-d" },
-    ],
-  });
+test("linkEdgesFrom reads only OUTBOUND as this end's link", () => {
+  const edges = linkEdgesFrom(
+    create(GetLinksResponseSchema, {
+      links: [
+        { id: "m-a", significance: 5, direction: LinkDirection.OUTBOUND },
+        { id: "m-b", significance: 3, direction: LinkDirection.INBOUND },
+        { id: "m-c", direction: LinkDirection.BOTH },
+        { id: "m-d" },
+      ],
+    }),
+  );
 
   assert.deepEqual(edges, [
     { id: "m-a", significance: 5, outbound: true },
     { id: "m-b", significance: 3, outbound: false },
-    { id: "m-c", significance: 0, outbound: true },
+    { id: "m-c", significance: 0, outbound: false },
     // An absent direction is read as not ours, which is the safe reading: the delta only ever
     // removes an edge it believes it declared.
     { id: "m-d", significance: 0, outbound: false },
   ]);
 });
 
-test("linksFrom tolerates a response with no links", () => {
-  assert.deepEqual(linksFrom({}), []);
+test("linkEdgesFrom tolerates a response with no links", () => {
+  assert.deepEqual(linkEdgesFrom(create(GetLinksResponseSchema, {})), []);
 });

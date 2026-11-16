@@ -1,9 +1,9 @@
-// Plain response shapes the plugin works with, projected from the gateway's protojson output.
+// Plain shapes the plugin works with.
 //
-// The gateway (grpc-gateway, default marshaler) emits camelCase field names, serialises int64
-// fields as JSON *strings* (timeStamp, timeRecalled, timeStart, timeEnd), and encodes enums as
-// their string names (isBinary as "TRUE"/"FALSE"). The client normalises all of that into the
-// numbers/booleans below before anything else in the plugin sees it.
+// The views are projections of the generated messages hippocampus-client returns (parse.ts does the
+// projecting): int64 fields arrive there as bigint and enums as numbers, and the plugin wants plain
+// numbers and booleans. The inputs are the subset of each request the plugin sends; each is
+// assignable to the generated request type, so the compiler holds them to the contract.
 
 export interface MemoryView {
   id: string;
@@ -18,23 +18,13 @@ export interface MemoryView {
   isBinary: boolean;
 }
 
-export interface EventView {
-  id: string;
-  name: string;
-  description: string;
-  significance: number;
-  group: string;
-  timeStart: number;
-  timeEnd: number;
-}
-
 export interface StoreResult {
   id: string;
   rejected: boolean;
 }
 
 // LinkEdge is one edge of the link graph, as GetMemoryLinks reports it. direction is an enum on the
-// wire ("OUTBOUND"/"INBOUND"); the client flattens it to a boolean, which is all the plugin needs -
+// wire (OUTBOUND/INBOUND); parse.ts flattens it to a boolean, which is all the plugin needs -
 // whether this end declared the link.
 export interface LinkEdge {
   id: string;
@@ -42,14 +32,8 @@ export interface LinkEdge {
   outbound: boolean;
 }
 
-export interface SummarisationCandidate {
-  eventId: string;
-  eventName: string;
-  memoryCount: number;
-}
-
-// Input shapes for the write endpoints. Timestamps are deliberately omitted so the server defaults
-// them to "now" (sidestepping the int64-as-string encoding on the write path).
+// Input shapes for the write endpoints. Timestamps are deliberately omitted so the server stamps
+// them "now", which is what a note being synced means.
 
 export interface StoreMemoryInput {
   body: string;
@@ -67,25 +51,9 @@ export interface SearchMemoriesInput {
   reinforce?: boolean;
 }
 
-export interface ListInput {
-  group?: string;
-  significanceMin?: number;
-  significanceMax?: number;
-  orderBy?: string;
-  limit?: number;
-  offset?: number;
-}
-
 // LinkInput is one link to write: a target and the weight the edge carries. The weight is a plain
 // number rather than part of the significance registry, so it is never ranked against a memory's.
 export interface LinkInput {
   id: string;
   significance: number;
-}
-
-export interface StoreEventInput {
-  name: string;
-  description?: string;
-  significance?: number;
-  group?: string;
 }

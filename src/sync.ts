@@ -1,6 +1,6 @@
 import { Notice, TAbstractFile, TFile } from "obsidian";
 
-import { HippocampusError } from "./client";
+import { isNotFound } from "./client";
 import { linkDelta, linkPath, resolveLinkIds } from "./links";
 import {
   isUnder,
@@ -126,7 +126,7 @@ export class SyncEngine {
 
       await this.store(file.path, body, significance, group, metadata);
     } catch (err) {
-      if (err instanceof HippocampusError && err.status === 404) {
+      if (isNotFound(err)) {
         // The sleep cycle deleted this memory; re-create it.
         delete map[file.path];
         await this.store(file.path, body, significance, group, metadata);

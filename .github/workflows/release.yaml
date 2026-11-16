@@ -81,8 +81,8 @@ jobs:
 
       # `npm ci` builds from the committed lockfile (reproducible, unlike `npm install`); the build
       # script type-checks (tsc --noEmit) and bundles src/main.ts to main.js via esbuild. `npm test`
-      # includes the contract-conformance suite, so a release cannot ship a plugin whose wire
-      # handling has drifted from the service version it declares. The assertion guarantees a
+      # drives the pinned hippocampus-client through requestUrl, and the build type-checks every call
+      # against it, so a release cannot ship a plugin built against a client it does not compile with. The assertion guarantees a
       # release never ships an empty/absent bundle if esbuild silently no-ops.
       - name: Install, build, test, and verify assets
         run: |

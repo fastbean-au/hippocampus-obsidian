@@ -30,10 +30,10 @@ rest decay under a finite budget.
 
 ## Requirements
 
-- **Hippocampus v0.53.1 or newer**, with the HTTP gateway enabled — set `gateway.port` to a non-zero
+- **Hippocampus v0.54.0 or newer**, with the HTTP gateway enabled — set `gateway.port` to a non-zero
   value in its config (the shipped `deploy/compose/config.sqlite.json` uses `8080`; the root
   `config.json` ships with the gateway **disabled** at `0`). See
-  [Contract conformance](#contract-conformance) for what that floor means and how it moves.
+  [The client](#the-client) for what that floor means and how it moves.
 - **Obsidian 1.4.0 or newer** (`minAppVersion` in `manifest.json`).
 - Node.js and npm, only if you are building from source.
 
@@ -67,7 +67,7 @@ Then enable **Hippocampus Memory** under _Settings → Community plugins_.
 ```bash
 npm install
 npm run build     # tsc typecheck + esbuild bundle -> main.js
-npm test          # wire parsing, note→memory mapping, and contract conformance
+npm test          # the client over a fake requestUrl, note→memory mapping, links
 ```
 
 `npm run dev` runs esbuild in watch mode. Copy `manifest.json`, `styles.css` and the built `main.js`
@@ -91,23 +91,22 @@ symlink the plugin folder there and rely on `npm run dev`.
 - **Mirror the vault's `[[wikilinks]]`** — a synced note's links become links between the memories,
   in both the manual and automatic paths. On by default.
 
-## Contract conformance
+## The client
 
-The plugin hand-writes every wire shape it touches: `src/routes.ts` names the gateway routes it
-calls and `src/types.ts` mirrors the gateway's protojson projection. It imports nothing from the
-service's contract and generates nothing from it — which is what keeps it a plain TypeScript project
-with no toolchain beyond npm, and what makes a renamed path or a dropped field a runtime 404 rather
-than a build failure.
+The plugin does not hand-write its wire. It talks to the gateway through
+[`hippocampus-client`](https://github.com/fastbean-au/hippocampus/blob/main/docs/typescript.md), the
+TypeScript client the service generates from its own contract, given a `fetch` built over Obsidian's
+`requestUrl` (`src/fetch.ts`) — the renderer's own `fetch` would be refused by CORS. A renamed route
+or field is therefore a type error at build time against the pinned client, not a 404 a user meets.
+What is left in `src/client.ts` is the handful of calls the plugin makes, narrowed to the shapes the
+sync engine uses.
 
-`contract/hippocampus.swagger.json` is the service's generated OpenAPI document, vendored at the
-version in `contract/SERVICE_VERSION`, and `test/conformance.test.ts` holds both hand-written
-surfaces against it: every route, every field read off a response, every field sent in a request, and
-every query parameter. That pinned version is the **minimum service version** this plugin declares.
-
-It moves on its own: when the service cuts a release, `contract-bump.yaml` re-vendors the document
-from that tag and opens a pull request carrying the conformance result. A **red** one means the
-gateway has moved under the plugin and the plugin needs changing; a green one means this build is
-compatible with that release, and merging raises the floor.
+The client is pinned to the tarball attached to a service release, and `contract/SERVICE_VERSION`
+names that release; it is the **minimum service version** this plugin declares. It moves on its own:
+when the service cuts a release, `contract-bump.yaml` raises the dependency to that release's
+tarball, builds and tests against it, and opens a pull request carrying the result. A **red** one
+means the client moved under the plugin; a green one means this build is compatible with that
+release, and merging raises the floor.
 
 ## Releasing
 
@@ -124,7 +123,7 @@ key on.
 
 `release.yaml` validates that the tag agrees with all three files **before** building — a mismatch
 fails the run rather than shipping a release the updater cannot match — then builds, runs the full
-test suite including conformance, and publishes the release with its three assets.
+test suite, and publishes the release with its three assets.
 
 ## Configure
 

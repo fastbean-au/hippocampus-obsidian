@@ -5,6 +5,7 @@ import {
   Plugin,
   Setting,
   TAbstractFile,
+  requestUrl,
 } from "obsidian";
 
 import { HippocampusClient } from "./client";
@@ -91,10 +92,13 @@ export default class HippocampusPlugin extends Plugin {
   }
 
   rebuildClient(): void {
-    this.client = new HippocampusClient({
-      baseUrl: this.settings.baseUrl,
-      token: this.settings.token,
-    });
+    this.client = new HippocampusClient(
+      {
+        baseUrl: this.settings.baseUrl,
+        token: this.settings.token,
+      },
+      requestUrl,
+    );
   }
 
   // refreshSyncRegistration exists for the settings toggle; the vault handlers self-gate on

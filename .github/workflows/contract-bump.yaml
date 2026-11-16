@@ -1,11 +1,16 @@
 name: Contract bump
 
-# Re-vendor contract/hippocampus.swagger.json when the service cuts a release, and open a PR.
+# Raise the hippocampus-client dependency when the service cuts a release, and open a PR.
+#
+# The plugin's wire is hippocampus-client, the TypeScript client the service generates from its own
+# contract and attaches to every release as a tarball. Until 2026-11 this workflow re-vendored the
+# OpenAPI document instead, for a conformance suite that policed a hand-written client; with the
+# client generated, the dependency IS the contract, and the plugin's own tests run against it.
 #
 # This exists because a satellite repository without one goes stale silently. hippocampus-gen sits
 # eleven releases behind its pinned service version for exactly this reason, and the plugin has more
 # to lose: contract/SERVICE_VERSION is also the minimum service version this plugin declares, so a
-# stale pin is a stale promise as well as a stale document.
+# stale pin is a stale promise as well as a stale dependency.
 #
 # Fired by a repository_dispatch from the service's release workflow (type `hippocampus-release`,
 # client_payload.tag), and runnable by hand for a catch-up or a re-run.
@@ -15,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Service tag to vendor the contract from (e.g. v0.48.0)"
+        description: "Service tag to take hippocampus-client from (e.g. v0.54.0)"
         required: true
 
 permissions:
@@ -45,52 +50,54 @@ jobs:
 
           echo "SERVICE_TAG=$tag" >> "$GITHUB_ENV"
 
-      # Fetch the generated OpenAPI document from the released tag rather than from main, so what is
-      # vendored is what that release actually serves.
-      - name: Vendor the contract from that release
-        run: |
-          set -euo pipefail
-
-          url="https://raw.githubusercontent.com/fastbean-au/hippocampus/${SERVICE_TAG}/contract/hippocampus.swagger.json"
-
-          previous="$(cat contract/SERVICE_VERSION)"
-
-          curl -fsSL "$url" -o contract/hippocampus.swagger.json
-          printf '%s\n' "$SERVICE_TAG" > contract/SERVICE_VERSION
-
-          # README.md names the floor in prose as well, and the conformance suite holds the two
-          # together - so bumping the pin alone would open a pull request that fails its own check.
-          sed -i "s|Hippocampus ${previous} or newer|Hippocampus ${SERVICE_TAG} or newer|" README.md
-
-          # A document that does not parse would fail the conformance suite below anyway, but it
-          # fails more legibly here, next to the URL it came from.
-          jq -e '.paths | length > 0' contract/hippocampus.swagger.json >/dev/null
-
-      - name: Check whether anything moved
-        id: diff
-        run: |
-          if git diff --quiet contract/ README.md; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "contract is already at $SERVICE_TAG - nothing to do"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-node@v7
-        if: steps.diff.outputs.changed == 'true'
         with:
           node-version: "24"
           cache: npm
 
-      # Run the conformance suite against the NEW contract before opening anything. The PR is worth
-      # opening either way - a red one is the notification that the gateway moved under the plugin,
-      # which is the whole point of this workflow - so the failure is recorded and not fatal here.
-      - name: Run the conformance suite against the new contract
+      # The release's own tarball rather than npm, because the package is not uploaded there yet
+      # and the tarball is what the service's release job attaches whether or not it is. A release
+      # without one is not one this plugin can move to, and saying so here is more legible than an
+      # npm error in the next step.
+      - name: Raise the client to that release
+        run: |
+          set -euo pipefail
+
+          url="https://github.com/fastbean-au/hippocampus/releases/download/${SERVICE_TAG}/hippocampus-client-${SERVICE_TAG#v}.tgz"
+
+          if ! curl -fsIL -o /dev/null "$url"; then
+            echo "::error::${SERVICE_TAG} has no hippocampus-client tarball attached - cannot move to it"
+            exit 1
+          fi
+
+          previous="$(cat contract/SERVICE_VERSION)"
+
+          npm install --save --ignore-scripts "hippocampus-client@${url}"
+          printf '%s\n' "$SERVICE_TAG" > contract/SERVICE_VERSION
+
+          # README.md names the floor in prose as well.
+          sed -i "s|Hippocampus ${previous} or newer|Hippocampus ${SERVICE_TAG} or newer|" README.md
+
+      - name: Check whether anything moved
+        id: diff
+        run: |
+          if git diff --quiet contract/ README.md package.json package-lock.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "already on $SERVICE_TAG - nothing to do"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build and test against the NEW client before opening anything. The PR is worth opening either
+      # way - a red one is the notification that the client moved under the plugin, which is the
+      # whole point of this workflow - so the failure is recorded and not fatal here.
+      - name: Build and test against the new client
         if: steps.diff.outputs.changed == 'true'
-        id: conformance
+        id: verify
         continue-on-error: true
         run: |
           npm ci
+          npm run build
           npm test
 
       - name: Open the bump pull request
@@ -107,17 +114,17 @@ jobs:
           token: ${{ secrets.BUMP_PR_TOKEN || github.token }}
           branch: contract/${{ env.SERVICE_TAG }}
           base: main
-          commit-message: "Vendor the contract from hippocampus ${{ env.SERVICE_TAG }}"
-          title: "Vendor the contract from hippocampus ${{ env.SERVICE_TAG }}"
+          commit-message: "Build against hippocampus-client ${{ env.SERVICE_TAG }}"
+          title: "Build against hippocampus-client ${{ env.SERVICE_TAG }}"
           body: |
-            Re-vendored `contract/hippocampus.swagger.json` from
+            Raised `hippocampus-client` to the tarball attached to
             [`${{ env.SERVICE_TAG }}`](https://github.com/fastbean-au/hippocampus/releases/tag/${{ env.SERVICE_TAG }})
-            and raised `contract/SERVICE_VERSION` to match.
+            and `contract/SERVICE_VERSION` to match.
 
-            Conformance suite against the new contract: **${{ steps.conformance.outcome }}**.
+            Build and tests against the new client: **${{ steps.verify.outcome }}**.
 
-            A failure here is not noise — it means a route or a field this plugin hand-writes has
-            moved, and the plugin needs changing before this merges. A pass means the plugin is
+            A failure here is not noise — it means something the plugin uses in the client has moved,
+            and the plugin needs changing before this merges. A pass means the plugin is
             compatible with `${{ env.SERVICE_TAG }}`, and merging raises the minimum service version
             it declares.
           labels: contract

@@ -1,96 +1,43 @@
-// Pure normalisation of the gateway's protojson responses into the plugin's plain shapes. Kept
-// free of any Obsidian import so it can be unit-tested directly. The gateway emits camelCase field
-// names, int64 fields as JSON *strings*, and enums as their string names.
+// Projection of hippocampus-client's generated messages into the plugin's plain shapes. Kept free of
+// any Obsidian import so it can be unit-tested directly.
+//
+// The decoding this file used to do - camelCase names, int64 fields as JSON strings, enums by name -
+// is now the shared client's, done against the contract's own descriptor. What is left is the
+// narrowing: bigint to number (every value here is a UnixNano time or a count, well inside 2^53 for
+// a count and precise enough for a time), and the tri-state and direction enums to booleans.
 
-import type {
-	EventView,
-	LinkEdge,
-	MemoryView,
-	SummarisationCandidate,
-} from "./types";
+import { Bool, LinkDirection } from "hippocampus-client";
+import type { GetLinksResponse, GetMemoriesResponse, Memory } from "hippocampus-client";
 
-// toNumber parses the gateway's string-encoded int64 fields (and tolerates already-numeric input).
-export function toNumber(value: unknown): number {
-	if (typeof value === "number") {
-		return value;
-	}
+import type { LinkEdge, MemoryView } from "./types";
 
-	if (typeof value === "string" && value !== "") {
-		const n = Number(value);
-
-		return Number.isFinite(n) ? n : 0;
-	}
-
-	return 0;
+export function toMemoryView(memory: Memory): MemoryView {
+  return {
+    id: memory.id,
+    body: memory.body,
+    significance: memory.significance,
+    eventId: memory.eventId,
+    group: memory.group,
+    timeStamp: Number(memory.timeStamp),
+    timeRecalled: Number(memory.timeRecalled),
+    recallCount: memory.recallCount,
+    isSummary: memory.isSummary,
+    // A tri-state on the wire; only TRUE is binary, UNSPECIFIED and FALSE both mean text.
+    isBinary: memory.isBinary === Bool.TRUE,
+  };
 }
 
-export function toMemoryView(raw: Record<string, unknown>): MemoryView {
-	return {
-		id: String(raw.id ?? ""),
-		body: String(raw.body ?? ""),
-		significance: toNumber(raw.significance),
-		eventId: String(raw.eventId ?? ""),
-		group: String(raw.group ?? ""),
-		timeStamp: toNumber(raw.timeStamp),
-		timeRecalled: toNumber(raw.timeRecalled),
-		recallCount: toNumber(raw.recallCount),
-		isSummary: raw.isSummary === true,
-		// isBinary is a tri-state enum on the wire ("TRUE"/"FALSE"/"UNSPECIFIED"); only TRUE is binary.
-		isBinary: raw.isBinary === "TRUE" || raw.isBinary === 2,
-	};
+export function memoryViewsFrom(response: GetMemoriesResponse): MemoryView[] {
+  return response.memories.map(toMemoryView);
 }
 
-export function toEventView(raw: Record<string, unknown>): EventView {
-	return {
-		id: String(raw.id ?? ""),
-		name: String(raw.name ?? ""),
-		description: String(raw.description ?? ""),
-		significance: toNumber(raw.significance),
-		group: String(raw.group ?? ""),
-		timeStart: toNumber(raw.timeStart),
-		timeEnd: toNumber(raw.timeEnd),
-	};
-}
-
-export function memoriesFrom(json: Record<string, unknown>): MemoryView[] {
-	const rows = Array.isArray(json.memories) ? json.memories : [];
-
-	return rows.map((row) => toMemoryView(row as Record<string, unknown>));
-}
-
-export function eventsFrom(json: Record<string, unknown>): EventView[] {
-	const rows = Array.isArray(json.events) ? json.events : [];
-
-	return rows.map((row) => toEventView(row as Record<string, unknown>));
-}
-
-export function candidatesFrom(json: Record<string, unknown>): SummarisationCandidate[] {
-	const rows = Array.isArray(json.candidates) ? json.candidates : [];
-
-	return rows.map((row) => {
-		const c = row as Record<string, unknown>;
-
-		return {
-			eventId: String(c.eventId ?? ""),
-			eventName: String(c.eventName ?? ""),
-			memoryCount: toNumber(c.memoryCount),
-		};
-	});
-}
-
-// linksFrom normalises a GetLinksResponse. direction is an enum on the wire and only OUTBOUND means
-// this end declared the link; anything else - INBOUND, BOTH, or an unset value - is read as not
-// ours, which is the safe reading, since the delta only ever removes an edge it believes it owns.
-export function linksFrom(json: Record<string, unknown>): LinkEdge[] {
-	const rows = Array.isArray(json.links) ? json.links : [];
-
-	return rows.map((row) => {
-		const edge = row as Record<string, unknown>;
-
-		return {
-			id: String(edge.id ?? ""),
-			significance: toNumber(edge.significance),
-			outbound: edge.direction === "LINK_DIRECTION_OUTBOUND" || edge.direction === 2,
-		};
-	});
+// linkEdgesFrom narrows a GetLinksResponse. Only OUTBOUND means this end declared the link; anything
+// else - INBOUND, BOTH, or an unset value - is read as not ours, which is the safe reading, since the
+// delta only ever removes an edge it believes it owns.
+export function linkEdgesFrom(response: GetLinksResponse): LinkEdge[] {
+  return response.links.map((edge) => ({
+    id: edge.id,
+    significance: edge.significance,
+    outbound: edge.direction === LinkDirection.OUTBOUND,
+  }));
 }

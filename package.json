@@ -16,6 +16,7 @@
 	"author": "fastbean-au",
 	"license": "MIT",
 	"devDependencies": {
+		"@bufbuild/protobuf": "^2.17.0",
 		"@types/node": "^26.6.6",
 		"builtin-modules": "^5.5.0",
 		"esbuild": "^0.28.2",
@@ -29,5 +30,8 @@
 	},
 	"overrides": {
 		"moment": "^2.31.0"
+	},
+	"dependencies": {
+		"hippocampus-client": "https://github.com/fastbean-au/hippocampus/releases/download/v0.54.0/hippocampus-client-0.54.0.tgz"
 	}
 }
