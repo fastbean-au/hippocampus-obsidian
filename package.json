@@ -32,6 +32,6 @@
 		"moment": "^2.31.0"
 	},
 	"dependencies": {
-		"hippocampus-client": "https://github.com/fastbean-au/hippocampus/releases/download/v0.54.0/hippocampus-client-0.54.0.tgz"
+		"hippocampus-client": "https://github.com/fastbean-au/hippocampus/releases/download/v0.54.1/hippocampus-client-0.54.1.tgz"
 	}
 }
